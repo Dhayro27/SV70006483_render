@@ -7,44 +7,48 @@ module.exports = function(passport) {
   passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+      userProfileURL: 'https://www.googleapis.com/oauth2/v3/userinfo',
+      passReqToCallback: true
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (req, accessToken, refreshToken, profile, done) => {
+      console.log('Google strategy callback initiated');
+      console.log('Profile:', JSON.stringify(profile, null, 2));
       try {
-        const [rows] = await pool.query('SELECT * FROM users WHERE google_id = ?', [profile.id]);
+        const result = await pool.query('SELECT * FROM users WHERE google_id = $1', [profile.id]);
         
-        if (rows.length > 0) {
-          done(null, rows[0]);
+        if (result.rows.length > 0) {
+          console.log('Existing user found');
+          done(null, result.rows[0]);
         } else {
-          const [result] = await pool.query(
-            'INSERT INTO users (google_id, email, name) VALUES (?, ?, ?)',
+          console.log('Creating new user');
+          const newUser = await pool.query(
+            'INSERT INTO users (google_id, email, name) VALUES ($1, $2, $3) RETURNING *',
             [profile.id, profile.emails[0].value, profile.displayName]
           );
           
-          const newUser = {
-            id: result.insertId,
-            google_id: profile.id,
-            email: profile.emails[0].value,
-            name: profile.displayName
-          };
-          
-          done(null, newUser);
+          done(null, newUser.rows[0]);
         }
       } catch (error) {
+        console.error('Error in Google authentication:', error);
         done(error, null);
       }
     }
   ));
 
+  // Serialización y deserialización del usuario
   passport.serializeUser((user, done) => {
+    console.log('Serializing user:', user.id);
     done(null, user.id);
   });
 
   passport.deserializeUser(async (id, done) => {
+    console.log('Deserializing user:', id);
     try {
-      const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
-      done(null, rows[0]);
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      done(null, result.rows[0]);
     } catch (error) {
+      console.error('Error in deserialization:', error);
       done(error, null);
     }
   });

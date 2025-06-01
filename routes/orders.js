@@ -8,11 +8,11 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const [orders] = await pool.query(
-      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+    const result = await pool.query(
+      'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC',
       [req.user.id]
     );
-    res.json(orders);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error al obtener las órdenes:', error);
     res.status(500).json({ error: 'Error al obtener las órdenes' });
@@ -30,65 +30,65 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Se requiere al menos un item para crear una orden' });
   }
 
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   
   try {
-    await connection.beginTransaction();
+    await client.query('BEGIN');
 
-    const [orderResult] = await connection.query(
-      'INSERT INTO orders (user_id, total_amount, status) VALUES (?, 0, "pending")',
-      [req.user.id]
+    const orderResult = await client.query(
+      'INSERT INTO orders (user_id, total_amount, status) VALUES ($1, 0, $2) RETURNING id',
+      [req.user.id, 'pending']
     );
-    const orderId = orderResult.insertId;
+    const orderId = orderResult.rows[0].id;
 
     let totalAmount = 0;
     for (const item of items) {
-      const [productResult] = await connection.query(
-        'SELECT price FROM products WHERE id = ?',
+      const productResult = await client.query(
+        'SELECT price FROM products WHERE id = $1',
         [item.product_id]
       );
       
-      if (productResult.length === 0) {
+      if (productResult.rows.length === 0) {
         throw new Error(`Producto no encontrado: ${item.product_id}`);
       }
 
-      const price = productResult[0].price;
+      const price = productResult.rows[0].price;
       const itemTotal = price * item.quantity;
       totalAmount += itemTotal;
 
-      await connection.query(
-        'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+      await client.query(
+        'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($1, $2, $3, $4)',
         [orderId, item.product_id, item.quantity, price]
       );
     }
 
-    await connection.query(
-      'UPDATE orders SET total_amount = ? WHERE id = ?',
+    await client.query(
+      'UPDATE orders SET total_amount = $1 WHERE id = $2',
       [totalAmount, orderId]
     );
 
-    await connection.commit();
+    await client.query('COMMIT');
 
-    const [orderDetails] = await connection.query(
-      'SELECT * FROM orders WHERE id = ?',
+    const orderDetails = await client.query(
+      'SELECT * FROM orders WHERE id = $1',
       [orderId]
     );
-    const [orderItems] = await connection.query(
-      'SELECT * FROM order_items WHERE order_id = ?',
+    const orderItems = await client.query(
+      'SELECT * FROM order_items WHERE order_id = $1',
       [orderId]
     );
 
     res.status(201).json({
-      ...orderDetails[0],
-      items: orderItems
+      ...orderDetails.rows[0],
+      items: orderItems.rows
     });
 
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     console.error('Error al crear la orden:', error);
     res.status(500).json({ error: 'Error al crear la orden' });
   } finally {
-    connection.release();
+    client.release();
   }
 });
 

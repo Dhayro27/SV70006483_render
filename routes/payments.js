@@ -15,14 +15,17 @@ router.post('/create-payment-intent', async (req, res) => {
 
   try {
     // Obtener la orden de la base de datos
-    const [orderRows] = await pool.query('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, req.user.id]);
+    const orderResult = await pool.query(
+      'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
+      [orderId, req.user.id]
+    );
     
-    if (orderRows.length === 0) {
+    if (orderResult.rows.length === 0) {
       console.log('Orden no encontrada');
       return res.status(404).json({ error: 'Orden no encontrada' });
     }
 
-    const order = orderRows[0];
+    const order = orderResult.rows[0];
     console.log('Orden encontrada:', order);
 
     if (order.status !== 'pending') {
@@ -44,8 +47,10 @@ router.post('/create-payment-intent', async (req, res) => {
       return res.status(400).json({ error: `PaymentIntent en estado inesperado: ${paymentIntent.status}` });
     }
 
-await pool.query('UPDATE orders SET payment_intent_id = ?, status = ? WHERE id = ?', 
-  [paymentIntent.id, 'pending', order.id]);
+    await pool.query(
+      'UPDATE orders SET payment_intent_id = $1, status = $2 WHERE id = $3',
+      [paymentIntent.id, 'pending', order.id]
+    );
 
     console.log('Orden actualizada con PaymentIntent ID');
 
@@ -66,10 +71,12 @@ router.post('/confirm-payment', async (req, res) => {
     console.log('PaymentIntent recuperado:', paymentIntent);
     
     if (paymentIntent.status === 'succeeded') {
-      const [result] = await pool.query('UPDATE orders SET status = ? WHERE payment_intent_id = ?', 
-        ['completed', paymentIntentId]);
+      const result = await pool.query(
+        'UPDATE orders SET status = $1 WHERE payment_intent_id = $2',
+        ['completed', paymentIntentId]
+      );
       
-      if (result.affectedRows === 0) {
+      if (result.rowCount === 0) {
         console.log('No se encontró la orden correspondiente al PaymentIntent');
         return res.status(404).json({ error: 'No se encontró la orden correspondiente' });
       }
@@ -97,15 +104,18 @@ router.post('/refund', async (req, res) => {
   console.log('OrderId recibido para reembolso:', orderId);
 
   try {
-    const [orderRows] = await pool.query('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, req.user.id]);
-    console.log('Resultado de la consulta de orden para reembolso:', orderRows);
+    const orderResult = await pool.query(
+      'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
+      [orderId, req.user.id]
+    );
+    console.log('Resultado de la consulta de orden para reembolso:', orderResult.rows);
     
-    if (orderRows.length === 0) {
+    if (orderResult.rows.length === 0) {
       console.log('Orden no encontrada para reembolso');
       return res.status(404).json({ error: 'Orden no encontrada' });
     }
 
-    const order = orderRows[0];
+    const order = orderResult.rows[0];
     console.log('Orden encontrada para reembolso:', order);
 
     if (order.status !== 'completed') {
@@ -123,7 +133,10 @@ router.post('/refund', async (req, res) => {
     });
     console.log('Reembolso creado:', refund);
 
-    await pool.query('UPDATE orders SET status = ? WHERE id = ?', ['refunded', order.id]);
+    await pool.query(
+      'UPDATE orders SET status = $1 WHERE id = $2',
+      ['refunded', order.id]
+    );
     console.log('Orden actualizada como reembolsada');
 
     res.json({ success: true, refund });
@@ -132,7 +145,5 @@ router.post('/refund', async (req, res) => {
     res.status(500).json({ error: 'Error al procesar el reembolso' });
   }
 });
-
-
 
 module.exports = router;
