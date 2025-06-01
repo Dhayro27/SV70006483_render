@@ -1,14 +1,14 @@
 const express = require('express');
-const pool = require('../config/database');
+const db = require('../config/database');
 const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const [products] = await pool.query('SELECT * FROM products');
-    res.json(products);
+    const result = await db.query('SELECT * FROM products');
+    res.json(result.rows);
   } catch (error) {
-    console.error('Error al obtener los productos:', error);
-    res.status(500).json({ error: 'Error al obtener los productos' });
+    console.error('Error al obtener productos:', error);
+    res.status(500).json({ error: 'Error al obtener productos' });
   }
 });
 
@@ -24,21 +24,24 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const [result] = await pool.query('INSERT INTO products (name, price) VALUES (?, ?)', [name, price]);
-    res.status(201).json({ id: result.insertId, name, price });
+    const result = await db.query(
+      'INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *',
+      [name, price]
+    );
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error al crear el producto:', error);
-    res.status(500).json({ error: 'Error al crear el producto' });
+    console.error('Error al crear producto:', error);
+    res.status(500).json({ error: 'Error al crear producto' });
   }
 });
 
 router.get('/:id', async (req, res) => {
   try {
-    const [product] = await pool.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
-    if (product.length === 0) {
+    const result = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
-    res.json(product[0]);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error al obtener el producto:', error);
     res.status(500).json({ error: 'Error al obtener el producto' });
@@ -57,12 +60,12 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    const [result] = await pool.query(
-      'UPDATE products SET name = IFNULL(?, name), price = IFNULL(?, price) WHERE id = ?',
+    const result = await db.query(
+      'UPDATE products SET name = COALESCE($1, name), price = COALESCE($2, price) WHERE id = $3 RETURNING *',
       [name, price, req.params.id]
     );
     
-    if (result.affectedRows === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
     
@@ -79,9 +82,9 @@ router.delete('/:id', async (req, res) => {
   }
 
   try {
-    const [result] = await pool.query('DELETE FROM products WHERE id = ?', [req.params.id]);
+    const result = await db.query('DELETE FROM products WHERE id = $1 RETURNING *', [req.params.id]);
     
-    if (result.affectedRows === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
     
