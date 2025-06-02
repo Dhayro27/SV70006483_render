@@ -8,16 +8,15 @@ const verifyToken = require('../middleware/auth');
 
 
 router.get('/google',
-  passport.authenticate('google', { 
+  passport.authenticate('google', {
     scope: ['profile', 'email'],
     prompt: 'select_account'
   })
 );
 
-router.get('/google/callback', 
+router.get('/google/callback',
   passport.authenticate('google', { failureRedirect: '/login', session: false }),
   (req, res) => {
-    console.log('Google authentication successful. User:', req.user);
     if (req.user && req.user.user) {
       const { id, email, name } = req.user.user;
       const token = generateToken({ id, email, name });
@@ -30,20 +29,16 @@ router.get('/google/callback',
 );
 
 function generateToken(user) {
-  console.log('Generating token for user:', user);
-  return jwt.sign({ id: user.id, email: user.email, name: user.name }, process.env.JWT_SECRET, {
+  console.log('generacion de token:', user);
+  const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, process.env.JWT_SECRET, {
     expiresIn: '1d'
   });
+  console.log('Token generado:', token);
+  return token;
 }
 
 router.get('/logout', (req, res) => {
-  req.logout((err) => {
-    if (err) { 
-      console.error('Error during logout:', err);
-      return res.status(500).json({ error: 'Error durante el cierre de sesión' });
-    }
     res.json({ message: 'Sesión cerrada exitosamente' });
-  });
 });
 
 router.get('/verify', (req, res) => {
@@ -61,8 +56,7 @@ router.get('/verify', (req, res) => {
 });
 
 router.get('/user', verifyToken, (req, res) => {
-    console.log('User info requested:', req.user); 
-    res.json({ 
+    res.json({
         user: {
             id: req.user.id,
             email: req.user.email,

@@ -3,7 +3,22 @@ const pool = require('../config/database');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 
-// Ruta pública para obtener todos los productos
+/**
+ * @swagger
+ * /products:
+ *   get:
+ *     summary: Obtiene todos los productos
+ *     tags: [Products]
+ *     responses:
+ *       200:
+ *         description: Lista de productos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Product'
+ */
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM products');
@@ -14,7 +29,26 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Ruta protegida para crear un nuevo producto
+/**
+ * @swagger
+ * /products:
+ *   post:
+ *     summary: Crea un nuevo producto
+ *     tags: [Products]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Product'
+ *     responses:
+ *       201:
+ *         description: Producto creado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Product'
+ */
 router.post('/', verifyToken, async (req, res) => {
   const { name, price } = req.body;
   
@@ -88,5 +122,26 @@ router.delete('/:id', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Error al eliminar el producto' });
   }
 });
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Product:
+ *       type: object
+ *       required:
+ *         - name
+ *         - price
+ *       properties:
+ *         id:
+ *           type: integer
+ *           description: ID auto-generado del producto
+ *         name:
+ *           type: string
+ *           description: Nombre del producto
+ *         price:
+ *           type: number
+ *           description: Precio del producto
+ */
 
 module.exports = router;

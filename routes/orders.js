@@ -17,18 +17,14 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 router.post('/', verifyToken, async (req, res) => {
-    console.log('Creating order. User:', req.user); // Log para depuración
 
     if (!req.user || !req.user.id) {
-        console.log('User not authenticated or user ID not available'); // Log para depuración
         return res.status(401).json({ error: 'Usuario no autenticado o ID de usuario no disponible' });
     }
 
     const { items } = req.body;
-    console.log('Order items:', items); // Log para depuración
     
     if (!items || !Array.isArray(items) || items.length === 0) {
-        console.log('Invalid items in order request'); // Log para depuración
         return res.status(400).json({ error: 'Se requiere al menos un item para crear una orden' });
     }
 
@@ -37,7 +33,6 @@ router.post('/', verifyToken, async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        console.log('Creating order for user ID:', req.user.id); // Log para depuración
 
         const orderResult = await client.query(
             'INSERT INTO orders (user_id, total_amount, status) VALUES ($1, 0, $2) RETURNING id',
@@ -45,11 +40,9 @@ router.post('/', verifyToken, async (req, res) => {
         );
         const orderId = orderResult.rows[0].id;
 
-        console.log('Order created with ID:', orderId); // Log para depuración
 
         let totalAmount = 0;
         for (const item of items) {
-            console.log('Processing item:', item); // Log para depuración
 
             const productResult = await client.query(
                 'SELECT price FROM products WHERE id = $1',
@@ -86,7 +79,6 @@ router.post('/', verifyToken, async (req, res) => {
             [orderId]
         );
 
-        console.log('Order created successfully:', orderDetails.rows[0]); // Log para depuración
 
         res.status(201).json({
             ...orderDetails.rows[0],
