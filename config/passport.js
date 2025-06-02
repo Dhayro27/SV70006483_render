@@ -2,6 +2,7 @@ require('dotenv').config();
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const pool = require('./database');
+const jwt = require('jsonwebtoken');
 
 module.exports = function(passport) {
   passport.use(new GoogleStrategy({
@@ -17,18 +18,28 @@ module.exports = function(passport) {
       try {
         const result = await pool.query('SELECT * FROM users WHERE google_id = $1', [profile.id]);
         
+        let user;
         if (result.rows.length > 0) {
           console.log('Existing user found');
-          done(null, result.rows[0]);
+          user = result.rows[0];
         } else {
           console.log('Creating new user');
-          const newUser = await pool.query(
+          const newUserResult = await pool.query(
             'INSERT INTO users (google_id, email, name) VALUES ($1, $2, $3) RETURNING *',
             [profile.id, profile.emails[0].value, profile.displayName]
           );
-          
-          done(null, newUser.rows[0]);
+          user = newUserResult.rows[0];
         }
+
+        // Generar JWT
+        // Generar JWT
+const token = jwt.sign(
+  { id: user.id, email: user.email, name: user.name },
+  process.env.JWT_SECRET,
+  { expiresIn: '1h' }
+);
+
+        done(null, { user, token });
       } catch (error) {
         console.error('Error in Google authentication:', error);
         done(error, null);
@@ -36,7 +47,7 @@ module.exports = function(passport) {
     }
   ));
 
-  // Serialización y deserialización del usuario
+  // Mantén la serialización y deserialización para compatibilidad con sesiones
   passport.serializeUser((user, done) => {
     console.log('Serializing user:', user.id);
     done(null, user.id);

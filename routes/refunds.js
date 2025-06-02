@@ -2,12 +2,9 @@ const express = require('express');
 const stripe = require('../config/stripe');
 const pool = require('../config/database');
 const router = express.Router();
+const verifyToken = require('../middleware/auth');
 
-router.post('/', async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
+router.post('/', verifyToken, async (req, res) => {
   const { orderId } = req.body;
 
   try {
@@ -25,6 +22,10 @@ router.post('/', async (req, res) => {
 
     const paymentIntentId = order.stripe_payment_intent_id;
 
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'No se encontró el ID de la intención de pago' });
+    }
+
     const refund = await stripe.refunds.create({
       payment_intent: paymentIntentId
     });
@@ -33,6 +34,7 @@ router.post('/', async (req, res) => {
 
     res.json({ success: true, refundId: refund.id });
   } catch (error) {
+    console.error('Error al procesar la devolución:', error);
     res.status(500).json({ error: 'Error al procesar la devolución' });
   }
 });

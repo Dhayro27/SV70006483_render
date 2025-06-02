@@ -26,6 +26,9 @@
             <button class="btn btn-primary me-2" onclick="login()">Iniciar sesión con Google</button>
             <button class="btn btn-secondary" onclick="logout()">Cerrar sesión</button>
         </div>
+        <div id="userInfo" class="mb-4 section-box" style="display: none;">
+            Bienvenido, <span id="userName"></span>
+        </div>
         
         <hr class="my-4">
 
@@ -100,20 +103,50 @@
 
         let orderItems = [];
 
+        function setToken(token) {
+            localStorage.setItem('jwtToken', token);
+        }
+
+        function getToken() {
+            return localStorage.getItem('jwtToken');
+        }
+
+        function removeToken() {
+            localStorage.removeItem('jwtToken');
+        }
+
+        function fetchWithAuth(url, options = {}) {
+            const token = getToken();
+            console.log('Sending request with token:', token); // Log para depuración
+            if (token) {
+                options.headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${token}`
+                };
+            } else {
+                console.log('No token available'); // Log para depuración
+            }
+            return fetch(url, options);
+        }
+
         function login() {
             window.location.href = '/auth/google';
         }
 
         function logout() {
-            fetch('/auth/logout', { method: 'GET' })
-                .then(() => {
-                    alert('Sesión cerrada');
-                    location.reload();
-                });
-        }
+    removeToken();
+    fetchWithAuth('/auth/logout', { method: 'GET' })
+        .then(() => {
+            alert('Sesión cerrada');
+            document.querySelector('button[onclick="login()"]').style.display = 'inline-block';
+            document.querySelector('button[onclick="logout()"]').style.display = 'none';
+            document.getElementById('userInfo').style.display = 'none';
+            location.reload();
+        });
+}
 
         function getProducts() {
-            fetch('/products')
+            fetchWithAuth('/products')
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('results').innerHTML = JSON.stringify(data, null, 2);
@@ -127,7 +160,7 @@
             const name = document.getElementById('productName').value;
             const price = document.getElementById('productPrice').value;
 
-            fetch('/products', {
+            fetchWithAuth('/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, price }),
@@ -143,7 +176,7 @@
         });
 
         function getOrders() {
-            fetch('/orders')
+            fetchWithAuth('/orders')
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('results').innerHTML = JSON.stringify(data, null, 2);
@@ -180,11 +213,18 @@
                 itemDiv.className = 'order-item d-flex justify-content-between align-items-center';
                 itemDiv.innerHTML = `
                     <span>${item.name} - Cantidad: ${item.quantity}</span>
-                    <button class="btn btn-sm btn-danger" onclick="removeOrderItem(${index})">Eliminar</button>
+                    <button class="btn btn-sm btn-danger remove-item" data-index="${index}">Eliminar</button>
                 `;
                 orderItemsDiv.appendChild(itemDiv);
             });
         }
+
+        document.getElementById('orderItems').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-item')) {
+                const index = parseInt(e.target.getAttribute('data-index'));
+                removeOrderItem(index);
+            }
+        });
 
         function removeOrderItem(index) {
             orderItems.splice(index, 1);
@@ -197,20 +237,30 @@
                 return;
             }
 
-            fetch('/orders', {
+            console.log('Creating order with items:', orderItems); // Log para depuración
+
+            fetchWithAuth('/orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ items: orderItems }),
             })
             .then(response => response.json())
             .then(data => {
-                alert('Orden creada con éxito');
-                document.getElementById('results').innerHTML = JSON.stringify(data, null, 2);
-                orderItems = [];
-                updateOrderItemsDisplay();
-                getOrders();
+                console.log('Order creation response:', data); // Log para depuración
+                if (data.error) {
+                    alert('Error al crear la orden: ' + data.error);
+                } else {
+                    alert('Orden creada con éxito');
+                    document.getElementById('results').innerHTML = JSON.stringify(data, null, 2);
+                    orderItems = [];
+                    updateOrderItemsDisplay();
+                    getOrders();
+                }
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al crear la orden');
+            });
         }
 
         document.getElementById('paymentForm').addEventListener('submit', async function(e) {
@@ -218,7 +268,7 @@
             const orderId = document.getElementById('orderSelect').value;
 
             try {
-                const response = await fetch('/payments/create-payment-intent', {
+                const response = await fetchWithAuth('/payments/create-payment-intent', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ orderId }),
@@ -234,7 +284,7 @@
                 if (result.error) {
                     alert('Error en el pago: ' + result.error.message);
                 } else {
-                    const confirmResponse = await fetch('/payments/confirm-payment', {
+                    const confirmResponse = await fetchWithAuth('/payments/confirm-payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ paymentIntentId: result.paymentIntent.id }),
@@ -259,7 +309,7 @@
             e.preventDefault();
             const orderId = document.getElementById('completedOrderSelect').value;
 
-            fetch('/payments/refund', {
+            fetchWithAuth('/payments/refund', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ orderId }),
@@ -303,6 +353,71 @@
                 }
             });
         }
+
+        function handleAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            console.log('Token recibido:', token); // Log para depuración
+            if (token) {
+                setToken(token);
+                // Limpiar la URL
+                window.history.replaceState({}, document.title, "/");
+                // Actualizar la UI
+                updateUIAfterLogin();
+                console.log('Token guardado:', getToken()); // Log para depuración
+            }
+        }
+
+     function updateUIAfterLogin() {
+    document.querySelector('button[onclick="login()"]').style.display = 'none';
+    document.querySelector('button[onclick="logout()"]').style.display = 'inline-block';
+    
+    fetchWithAuth('/auth/user')
+        .then(response => response.json())
+        .then(data => {
+            console.log('User data received:', data); // Log para depuración
+            if (data.user && data.user.name) {
+                document.getElementById('userName').textContent = data.user.name;
+                document.getElementById('userInfo').style.display = 'block';
+            } else {
+                console.error('No user name received');
+                document.getElementById('userName').textContent = data.user.email || 'Usuario';
+                document.getElementById('userInfo').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching user info:', error);
+            alert('Error al cargar la información del usuario');
+        });
+
+    getProducts();
+    getOrders();
+}
+
+        function checkAuthStatus() {
+            const token = getToken();
+            if (token) {
+                fetchWithAuth('/auth/verify')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.user) {
+                            updateUIAfterLogin();
+                        } else {
+                            removeToken();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error verifying token:', error);
+                        removeToken();
+                    });
+            }
+        }
+
+        // Llamar a estas funciones cuando se carga la página
+        document.addEventListener('DOMContentLoaded', () => {
+            handleAuthCallback();
+            checkAuthStatus();
+        });
 
         getProducts();
         getOrders();

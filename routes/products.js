@@ -1,7 +1,9 @@
 const express = require('express');
 const pool = require('../config/database');
 const router = express.Router();
+const verifyToken = require('../middleware/auth');
 
+// Ruta pública para obtener todos los productos
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM products');
@@ -12,11 +14,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
+// Ruta protegida para crear un nuevo producto
+router.post('/', verifyToken, async (req, res) => {
   const { name, price } = req.body;
   
   if (!name || !price) {
@@ -35,6 +34,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Ruta pública para obtener un producto específico
 router.get('/:id', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
@@ -48,11 +48,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
+// Ruta protegida para actualizar un producto
+router.put('/:id', verifyToken, async (req, res) => {
   const { name, price } = req.body;
   
   if (!name && !price) {
@@ -69,18 +66,15 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
     
-    res.json({ message: 'Producto actualizado correctamente' });
+    res.json({ message: 'Producto actualizado correctamente', product: result.rows[0] });
   } catch (error) {
     console.error('Error al actualizar el producto:', error);
     res.status(500).json({ error: 'Error al actualizar el producto' });
   }
 });
 
-router.delete('/:id', async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
+// Ruta protegida para eliminar un producto
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM products WHERE id = $1 RETURNING *', [req.params.id]);
     
@@ -88,7 +82,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
     
-    res.json({ message: 'Producto eliminado correctamente' });
+    res.json({ message: 'Producto eliminado correctamente', product: result.rows[0] });
   } catch (error) {
     console.error('Error al eliminar el producto:', error);
     res.status(500).json({ error: 'Error al eliminar el producto' });

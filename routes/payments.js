@@ -2,14 +2,10 @@ const express = require('express');
 const stripe = require('../config/stripe');
 const pool = require('../config/database');
 const router = express.Router();
+const verifyToken = require('../middleware/auth');
 
-router.post('/create-payment-intent', async (req, res) => {
+router.post('/create-payment-intent', verifyToken, async (req, res) => {
   console.log('Iniciando creación de PaymentIntent');
-  if (!req.user) {
-    console.log('Usuario no autenticado');
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
   const { orderId } = req.body;
   console.log('OrderId recibido:', orderId);
 
@@ -61,7 +57,7 @@ router.post('/create-payment-intent', async (req, res) => {
   }
 });
 
-router.post('/confirm-payment', async (req, res) => {
+router.post('/confirm-payment', verifyToken, async (req, res) => {
   console.log('Iniciando confirmación de pago');
   const { paymentIntentId } = req.body;
   console.log('PaymentIntent ID recibido:', paymentIntentId);
@@ -72,8 +68,8 @@ router.post('/confirm-payment', async (req, res) => {
     
     if (paymentIntent.status === 'succeeded') {
       const result = await pool.query(
-        'UPDATE orders SET status = $1 WHERE payment_intent_id = $2',
-        ['completed', paymentIntentId]
+        'UPDATE orders SET status = $1 WHERE payment_intent_id = $2 AND user_id = $3',
+        ['completed', paymentIntentId, req.user.id]
       );
       
       if (result.rowCount === 0) {
@@ -93,13 +89,8 @@ router.post('/confirm-payment', async (req, res) => {
   }
 });
 
-router.post('/refund', async (req, res) => {
+router.post('/refund', verifyToken, async (req, res) => {
   console.log('Iniciando proceso de reembolso');
-  if (!req.user) {
-    console.log('Usuario no autenticado');
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
   const { orderId } = req.body;
   console.log('OrderId recibido para reembolso:', orderId);
 
