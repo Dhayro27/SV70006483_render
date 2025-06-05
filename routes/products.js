@@ -1,8 +1,8 @@
 const express = require('express');
 const pool = require('../config/database');
 const router = express.Router();
-const verifyToken = require('../middleware/auth_old');
-const { isAdmin } = require('../middleware/authMiddleware');
+// const verifyToken = require('../middleware/auth_old');
+const { verifyToken,isAdmin } = require('../middleware/authMiddleware');
 
 function generateSKU(product) {
   const name = product.name.substring(0, 3).toUpperCase();
