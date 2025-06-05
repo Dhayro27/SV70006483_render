@@ -10,7 +10,7 @@ exports.verifyToken = (req, res, next) => {
     if (err) return res.status(403).json({ error: 'Token inválido' });
     
     req.user = user;
-    // console.log('Usuario autenticado:', user);  // Log para depuración
+    console.log('Usuario autenticado:', user);  // Log para depuración
     next();
   });
 };
