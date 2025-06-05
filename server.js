@@ -1,26 +1,23 @@
 require('dotenv').config();
 
-const passportDebug = require('debug')('passport');
-const oauthDebug = require('debug')('oauth');
-
-process.env.DEBUG = 'passport,oauth';
-
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-// const session = require('express-session');
 const passport = require('passport');
 const swaggerJsDoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
+const jwt = require('jsonwebtoken');
+const path = require('path');
 
+const { verifyToken } = require('./middleware/authMiddleware');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const paymentRoutes = require('./routes/payments');
 const refundRoutes = require('./routes/refunds');
-const verifyToken = require('./middleware/auth');
-
-const path = require('path');
+const addressRoutes = require('./routes/addresses');
+const categoriesRoutes = require('./routes/categories');
+const cartsRouter = require('./routes/carts');
 
 require('./config/passport')(passport);
 
@@ -29,17 +26,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 app.use(express.json());
-
-// app.use(session({
-//   secret: process.env.SESSION_SECRET,
-//   resave: false,
-//   saveUninitialized: false,
-//   cookie: { secure: process.env.NODE_ENV === 'production' }
-// }));
-
 app.use(passport.initialize());
-// app.use(passport.session()); 
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -62,21 +49,36 @@ const swaggerOptions = {
       },
     ],
   },
-  apis: ['./routes/*.js'], // Rutas a los archivos que contienen anotaciones de Swagger
+  apis: ['./routes/*.js'], 
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      }
+    }
+  },
+  security: [{
+    bearerAuth: []
+  }]
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// Rutas
 app.use('/auth', authRoutes);
-app.use('/orders', verifyToken, orderRoutes);
+app.use('/addresses', verifyToken, addressRoutes);
+app.use('/categories', verifyToken, categoriesRoutes);
 app.use('/products', productRoutes);
-app.use('/payments', paymentRoutes);
-app.use('/refunds', refundRoutes);
+app.use('/carts', verifyToken, cartsRouter);
+app.use('/orders', verifyToken, orderRoutes);
+app.use('/payments', verifyToken, paymentRoutes);
+app.use('/refunds', verifyToken, refundRoutes);
 
+// Prueba de conexión a la base de datos
 const pool = require('./config/database');
-
-// Prueba de conexión
 pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Error al conectar con la base de datos:', err);
@@ -85,24 +87,40 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
+// Función para verificar el token de WebSocket
+function verifySocketToken(token) {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
+
 // Configuración de WebSockets
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (token) {
+    const user = verifySocketToken(token);
+    if (user) {
+      socket.user = user;
+    }
+  }
+  next();
+});
+
 io.on('connection', (socket) => {
-  console.log('Un cliente se ha conectado');
-
-  // Actualización en tiempo real de órdenes
-  socket.on('newOrder', (order) => {
-    console.log('Nueva orden recibida:', order);
-    io.emit('orderUpdate', order);
-  });
-
-  // Actualización en tiempo real de pagos
-  socket.on('newPayment', (payment) => {
-    console.log('Nuevo pago recibido:', payment);
-    io.emit('paymentUpdate', payment);
-  });
+  if (socket.user) {
+    console.log(`Un cliente se ha conectado - Usuario: ${socket.user.email}, Perfil: ${socket.user.role}`);
+  } else {
+    console.log('Un cliente se ha conectado - Invitado');
+  }
 
   socket.on('disconnect', () => {
-    console.log('Un cliente se ha desconectado');
+    if (socket.user) {
+      console.log(`Un cliente se ha desconectado - Usuario: ${socket.user.email}`);
+    } else {
+      console.log('Un cliente se ha desconectado - Invitado');
+    }
   });
 });
 

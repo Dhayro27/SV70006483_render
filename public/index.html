@@ -101,7 +101,8 @@
         const stripe = Stripe('pk_test_51RQeLJQPoY5O6I6JFICVMxoaGBmvC9eYlejeBunsHwFhDE9c2Y1cFVsyoW33I3dKzDhZUaUpEHU9YgWHcCKqiaO1000S6Kn2FE');
         const elements = stripe.elements();
         const cardElement = elements.create('card');
-        const socket = io();
+        let socket;
+       
 
         cardElement.mount('#card-element');
 
@@ -110,6 +111,7 @@
         function setToken(token) {
             localStorage.setItem('jwtToken', token);
         }
+        
 
         function getToken() {
             return localStorage.getItem('jwtToken');
@@ -138,13 +140,16 @@
         }
 
         function logout() {
-            localStorage.removeItem('jwtToken'); // Elimina el token JWT
+            localStorage.removeItem('jwtToken');
             fetch('/auth/logout', { method: 'GET' })
                 .then(() => {
                     alert('Sesión cerrada');
                     document.querySelector('button[onclick="login()"]').style.display = 'inline-block';
                     document.querySelector('button[onclick="logout()"]').style.display = 'none';
                     document.getElementById('userInfo').style.display = 'none';
+                    
+                    socket.disconnect();  
+                    
                     location.reload();
                 });
         }
@@ -362,63 +367,105 @@
         }
 
         function handleAuthCallback() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            console.log('Token recibido:', token);
-            if (token) {
-                setToken(token);
-                // Limpiar la URL
-                window.history.replaceState({}, document.title, "/");
-                // Actualizar la UI
-                updateUIAfterLogin();
-                console.log('Token guardado:', getToken());
-            }
-        }
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    console.log('Token recibido:', token);
+    if (token) {
+        setToken(token);
+        // Limpiar la URL
+        window.history.replaceState({}, document.title, "/");
+        // Actualizar la UI y inicializar el socket
+        updateUIAfterLogin();
+        console.log('Token guardado:', getToken());
+    }
+}
 
         function updateUIAfterLogin() {
-            document.querySelector('button[onclick="login()"]').style.display = 'none';
-            document.querySelector('button[onclick="logout()"]').style.display = 'inline-block';
+    document.querySelector('button[onclick="login()"]').style.display = 'none';
+    document.querySelector('button[onclick="logout()"]').style.display = 'inline-block';
+    
+    fetchWithAuth('/auth/user')
+        .then(response => response.json())
+        .then(data => {
+            console.log('User data received:', data);
+            if (data.user && data.user.name) {
+                document.getElementById('userName').textContent = data.user.name;
+                document.getElementById('userInfo').style.display = 'block';
+            } else {
+                console.error('No user name received');
+                document.getElementById('userName').textContent = data.user.email || 'Usuario';
+                document.getElementById('userInfo').style.display = 'block';
+            }
             
-            fetchWithAuth('/auth/user')
-                .then(response => response.json())
-                .then(data => {
-                    console.log('User data received:', data);
-                    if (data.user && data.user.name) {
-                        document.getElementById('userName').textContent = data.user.name;
-                        document.getElementById('userInfo').style.display = 'block';
-                    } else {
-                        console.error('No user name received');
-                        document.getElementById('userName').textContent = data.user.email || 'Usuario';
-                        document.getElementById('userInfo').style.display = 'block';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching user info:', error);
-                    alert('Error al cargar la información del usuario');
-                });
+            // Inicializar el socket después de obtener la información del usuario
+            initializeSocket(data.user);
+        })
+        .catch(error => {
+            console.error('Error fetching user info:', error);
+            alert('Error al cargar la información del usuario');
+        });
 
-            getProducts();
-            getOrders();
+    getProducts();
+    getOrders();
+}
+
+function initializeSocket(user) {
+    if (socket) {
+        socket.disconnect();
+    }
+    
+    socket = io({
+        auth: (cb) => {
+            cb({ token: getToken() });
         }
+    });
+
+    socket.on('connect', () => {
+        console.log('Conectado al servidor de WebSocket');
+        if (user) {
+            socket.emit('userInfo', {
+                email: user.email,
+                role: user.role 
+            });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Desconectado del servidor de WebSocket');
+    });
+
+    socket.on('orderUpdate', (order) => {
+        console.log('Actualización de orden recibida:', order);
+        getOrders();
+    });
+
+    socket.on('paymentUpdate', (payment) => {
+        console.log('Actualización de pago recibida:', payment);
+        getOrders();
+    });
+}
 
         function checkAuthStatus() {
-            const token = getToken();
-            if (token) {
-                fetchWithAuth('/auth/verify')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.user) {
-                            updateUIAfterLogin();
-                        } else {
-                            removeToken();
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error verifying token:', error);
-                        removeToken();
-                    });
-            }
-        }
+    const token = getToken();
+    if (token) {
+        fetchWithAuth('/auth/verify')
+            .then(response => response.json())
+            .then(data => {
+                if (data.user) {
+                    updateUIAfterLogin();
+                } else {
+                    removeToken();
+                }
+            })
+            .catch(error => {
+                console.error('Error verifying token:', error);
+                removeToken();
+            });
+    } else {
+        // Inicializar el socket como invitado si no hay token
+        initializeSocket(null);
+    }
+}
 
         // Llamar a estas funciones cuando se carga la página
         document.addEventListener('DOMContentLoaded', () => {

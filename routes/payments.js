@@ -2,7 +2,7 @@ const express = require('express');
 const stripe = require('../config/stripe');
 const pool = require('../config/database');
 const router = express.Router();
-const verifyToken = require('../middleware/auth');
+const verifyToken = require('../middleware/auth_old');
 
 router.post('/create-payment-intent', verifyToken, async (req, res) => {
   console.log('Iniciando creación de PaymentIntent');
